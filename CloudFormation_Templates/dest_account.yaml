@@ -1,0 +1,469 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# DESCRIPTION: This is the template that is launched in member accounts
+# where secrets will be used/pushed to
+
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  SSMCommandDoc:
+    Type: AWS::SSM::Document
+    Properties:
+        DocumentType: Command
+        Name: RunUpdateTLS
+        Content:
+            description: "UpdateTLS on Apache Instance"
+            schemaVersion: "2.2"
+            parameters:
+                SecretARN:
+                    type: "String"
+            mainSteps:
+                - action: "aws:runShellScript"
+                  name: "UpdateApacheFiles"
+                  inputs:
+                    runCommand:
+                    - "set +o posix"
+                    - "IFS=':' read -ra arn <<< {{ SecretARN }}"
+                    - "aws secretsmanager get-secret-value --secret-id {{ SecretARN }} --query SecretString --output text --region \"${arn[3]}\" | tee >(sudo sh -c \"jq -r .CERTIFICATE_PEM > /etc/pki/tls/certs/localhost.crt\") >(sudo sh -c \"jq -r .PRIVATE_KEY_PEM > /etc/pki/tls/private/localhost.key\") >(sudo sh -c \"jq -r .CERTIFICATE_CHAIN_PEM >> /etc/pki/tls/certs/ca-bundle.crt\") >/dev/null"
+                    - "sudo systemctl restart httpd"
+  VPCB9E5F0B4:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/Resource
+  VPCPublicSubnet1SubnetB4246D30:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.0.0/18
+      VpcId:
+        Ref: VPCB9E5F0B4
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: aws-cdk:subnet-name
+          Value: Public
+        - Key: aws-cdk:subnet-type
+          Value: Public
+        - Key: Name
+          Value: ACM-Blog/VPC/PublicSubnet1
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet1/Subnet
+  VPCPublicSubnet1RouteTableFEE4B781:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPCB9E5F0B4
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC/PublicSubnet1
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet1/RouteTable
+  VPCPublicSubnet1RouteTableAssociation0B0896DC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet1RouteTableFEE4B781
+      SubnetId:
+        Ref: VPCPublicSubnet1SubnetB4246D30
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet1/RouteTableAssociation
+  VPCPublicSubnet1DefaultRoute91CEF279:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet1RouteTableFEE4B781
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VPCIGWB7E252D3
+    DependsOn:
+      - VPCVPCGW99B986DC
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet1/DefaultRoute
+  VPCPublicSubnet1EIP6AD938E8:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC/PublicSubnet1
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet1/EIP
+  VPCPublicSubnet1NATGatewayE0556630:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - VPCPublicSubnet1EIP6AD938E8
+          - AllocationId
+      SubnetId:
+        Ref: VPCPublicSubnet1SubnetB4246D30
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC/PublicSubnet1
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet1/NATGateway
+  VPCPublicSubnet2Subnet74179F39:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.64.0/18
+      VpcId:
+        Ref: VPCB9E5F0B4
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: aws-cdk:subnet-name
+          Value: Public
+        - Key: aws-cdk:subnet-type
+          Value: Public
+        - Key: Name
+          Value: ACM-Blog/VPC/PublicSubnet2
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet2/Subnet
+  VPCPublicSubnet2RouteTable6F1A15F1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPCB9E5F0B4
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC/PublicSubnet2
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet2/RouteTable
+  VPCPublicSubnet2RouteTableAssociation5A808732:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet2RouteTable6F1A15F1
+      SubnetId:
+        Ref: VPCPublicSubnet2Subnet74179F39
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet2/RouteTableAssociation
+  VPCPublicSubnet2DefaultRouteB7481BBA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: VPCPublicSubnet2RouteTable6F1A15F1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VPCIGWB7E252D3
+    DependsOn:
+      - VPCVPCGW99B986DC
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PublicSubnet2/DefaultRoute
+  VPCPrivateSubnet1Subnet8BCA10E0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.128.0/18
+      VpcId:
+        Ref: VPCB9E5F0B4
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: aws-cdk:subnet-name
+          Value: Private
+        - Key: aws-cdk:subnet-type
+          Value: Private
+        - Key: Name
+          Value: ACM-Blog/VPC/PrivateSubnet1
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet1/Subnet
+  VPCPrivateSubnet1RouteTableBE8A6027:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPCB9E5F0B4
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC/PrivateSubnet1
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet1/RouteTable
+  VPCPrivateSubnet1RouteTableAssociation347902D1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: VPCPrivateSubnet1RouteTableBE8A6027
+      SubnetId:
+        Ref: VPCPrivateSubnet1Subnet8BCA10E0
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet1/RouteTableAssociation
+  VPCPrivateSubnet1DefaultRouteAE1D6490:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: VPCPrivateSubnet1RouteTableBE8A6027
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: VPCPublicSubnet1NATGatewayE0556630
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet1/DefaultRoute
+  VPCPrivateSubnet2SubnetCFCDAA7A:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.192.0/18
+      VpcId:
+        Ref: VPCB9E5F0B4
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: aws-cdk:subnet-name
+          Value: Private
+        - Key: aws-cdk:subnet-type
+          Value: Private
+        - Key: Name
+          Value: ACM-Blog/VPC/PrivateSubnet2
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet2/Subnet
+  VPCPrivateSubnet2RouteTable0A19E10E:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPCB9E5F0B4
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC/PrivateSubnet2
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet2/RouteTable
+  VPCPrivateSubnet2RouteTableAssociation0C73D413:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: VPCPrivateSubnet2RouteTable0A19E10E
+      SubnetId:
+        Ref: VPCPrivateSubnet2SubnetCFCDAA7A
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet2/RouteTableAssociation
+  VPCPrivateSubnet2DefaultRouteF4F5CFD2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: VPCPrivateSubnet2RouteTable0A19E10E
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: VPCPublicSubnet1NATGatewayE0556630
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/PrivateSubnet2/DefaultRoute
+  VPCIGWB7E252D3:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: ACM-Blog/VPC
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/IGW
+  VPCVPCGW99B986DC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPCB9E5F0B4
+      InternetGatewayId:
+        Ref: VPCIGWB7E252D3
+    Metadata:
+      aws:cdk:path: ACM-Blog/VPC/VPCGW
+  InstanceSSMCBFA3CF0:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                Fn::Join:
+                  - ""
+                  - - ec2.
+                    - Ref: AWS::URLSuffix
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/AmazonSSMManagedInstanceCore
+    Metadata:
+      aws:cdk:path: ACM-Blog/InstanceSSM/Resource
+  InstanceSSMDefaultPolicy6E4EFE93:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: secretsmanager:GetSecretValue
+            Effect: Allow
+            Resource: "*"
+          - Action: kms:Decrypt
+            Effect: Allow
+            Resource:
+              Ref: KMSKeyARN
+        Version: "2012-10-17"
+      PolicyName: InstanceSSMDefaultPolicy6E4EFE93
+      Roles:
+        - Ref: InstanceSSMCBFA3CF0
+    Metadata:
+      aws:cdk:path: ACM-Blog/InstanceSSM/DefaultPolicy/Resource
+  InstanceInstanceSecurityGroupF0E2D5BE:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ACM-Blog/Instance/InstanceSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: ApacheServer
+      VpcId:
+        Ref: VPCB9E5F0B4
+    Metadata:
+      aws:cdk:path: ACM-Blog/Instance/InstanceSecurityGroup/Resource
+  InstanceInstanceProfileAB5AEF02:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: InstanceSSMCBFA3CF0
+    Metadata:
+      aws:cdk:path: ACM-Blog/Instance/InstanceProfile
+  InstanceC1063A87:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ""
+      IamInstanceProfile:
+        Ref: InstanceInstanceProfileAB5AEF02
+      ImageId:
+        Ref: SsmParameterValueawsserviceamiamazonlinuxlatestamzn2amihvmx8664gp2C96584B6F00A464EAD1953AFF4B05118Parameter
+      InstanceType: t2.micro
+      SecurityGroupIds:
+        - Fn::GetAtt:
+            - InstanceInstanceSecurityGroupF0E2D5BE
+            - GroupId
+      SubnetId:
+        Ref: VPCPrivateSubnet1Subnet8BCA10E0
+      Tags:
+        - Key: Name
+          Value: ApacheServer
+      UserData:
+        Fn::Base64: >-
+          #!/bin/bash
+
+          sudo yum update -y
+
+          sudo yum install -y jq
+
+          sudo yum install -y httpd
+
+          sudo yum install -y mod_ssl
+
+          sudo systemctl start httpd
+
+          sudo systemctl enable httpd
+    DependsOn:
+      - InstanceSSMDefaultPolicy6E4EFE93
+      - InstanceSSMCBFA3CF0
+    Metadata:
+      aws:cdk:path: ACM-Blog/Instance/Resource
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Modules: aws-cdk=1.49.0,@aws-cdk/assets=1.51.0,@aws-cdk/aws-cloudwatch=1.51.0,@aws-cdk/aws-ec2=1.51.0,@aws-cdk/aws-efs=1.51.0,@aws-cdk/aws-events=1.51.0,@aws-cdk/aws-iam=1.51.0,@aws-cdk/aws-kms=1.51.0,@aws-cdk/aws-lambda=1.51.0,@aws-cdk/aws-logs=1.51.0,@aws-cdk/aws-s3=1.51.0,@aws-cdk/aws-s3-assets=1.51.0,@aws-cdk/aws-sqs=1.51.0,@aws-cdk/aws-ssm=1.51.0,@aws-cdk/cloud-assembly-schema=1.51.0,@aws-cdk/core=1.51.0,@aws-cdk/cx-api=1.51.0,@aws-cdk/region-info=1.51.0,jsii-runtime=Python/3.8.3
+    Condition: CDKMetadataAvailable
+Outputs:
+  ApacheServerInstanceRole:
+    Value:
+      Fn::GetAtt:
+        - InstanceSSMCBFA3CF0
+        - Arn
+Parameters:
+  SsmParameterValueawsserviceamiamazonlinuxlatestamzn2amihvmx8664gp2C96584B6F00A464EAD1953AFF4B05118Parameter:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  KMSKeyARN:
+    Type: String
+    Description: KMS Key ARN used to encrypt Secrets in Secrets Manager
+  LambdaFnARN:
+    Type: String
+    Description: Lambda Function ARN in CA Account used for Secret rotation
+Conditions:
+  CDKMetadataAvailable:
+    Fn::Or:
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ca-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - cn-north-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - cn-northwest-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-central-1
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-north-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-3
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - me-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - sa-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-east-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-west-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-west-2
