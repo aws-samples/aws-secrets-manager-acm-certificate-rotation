@@ -10,10 +10,20 @@ import os
 import secrets
 import time
 import json
-from OpenSSL import crypto
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+import pem
+from cryptography import x509
+from cryptography.x509.oid import AttributeOID, NameOID
+from cryptography.hazmat import backends
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, dsa, ec, ed448, ed25519
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+cryptography_backend = backends.default_backend()
+
 
 # ENV VARIABLES
 DELAY = 1
@@ -86,19 +96,6 @@ waiter_config = {
         }
       ]
     }
-  }
-}
-
-ALGORITHM_CONFIG = {
-  "TYPE_RSA": {
-    "sha256": "SHA256WITHRSA",
-    "sha384": "SHA384WITHRSA",
-    "sha512": "SHA512WITHRSA"  
-  },
-  "TYPE_DSA": {
-    "sha256": "SHA256WITHECDSA",
-    "sha384": "SHA384WITHECDSA",
-    "sha512": "SHA512WITHECDSA" 
   }
 }
 
@@ -204,93 +201,27 @@ def create_secret(service_client, arn, token):
         get_secret_dict(service_client, arn, 'AWSPENDING', token)
         logger.info("createSecret: Successfully retrieved secret for %s." % arn)
     except service_client.exceptions.ResourceNotFoundException:
-      if current_dict['CERTIFICATE_TYPE'] == 'ACM_MANAGED':
-        CERTIFICATE_ARN = ""
+        if current_dict['CERTIFICATE_TYPE'] == 'ACM_MANAGED':
+            current_dict = generate_acm_managed(current_dict, acm_client, renew_waiter, issue_waiter)
+        else:
+            key = ""
+            if 'CERTIFICATE_ARN' in current_dict: # renew certificate
+                key = serialization.load_pem_private_key(current_dict['PRIVATE_KEY_PEM'].encode(), password=None, backend=cryptography_backend)
+            else: # need to create new certificate
+                # keypair object
+                key = generate_private_key(
+                        current_dict["KEY_ALGORITHM"], 
+                        "" if "KEY_SIZE" not in current_dict else current_dict["KEY_SIZE"],
+                        "" if "EC_CURVE" not in current_dict else current_dict["EC_CURVE"])
+            try:
+                ## issue PCA certificate
+                current_dict = generate_customer_managed(current_dict, acm_pca_client, key)
+            except Exception as e:
+                logger.error("CreateSecret: Unable to create secret with error: %s" % (e))
 
-        # renew certificate to test everything works
-        if 'CERTIFICATE_ARN' in current_dict and current_dict['ENVIRONMENT'] == 'TEST':
-          CERTIFICATE_ARN = current_dict['CERTIFICATE_ARN']
-          acm_client.renew_certificate(CertificateArn=current_dict['CERTIFICATE_ARN'])
-          # wait for certificate renewal to complete
-          renew_waiter.wait(CertificateArn=CERTIFICATE_ARN)
-
-        else: # first time creating secret
-          response = acm_client.request_certificate(
-            DomainName = current_dict['COMMON_NAME'],
-            CertificateAuthorityArn=current_dict['CA_ARN']
-          )
-          CERTIFICATE_ARN = response['CertificateArn']
-          current_dict['CERTIFICATE_ARN'] = CERTIFICATE_ARN
-          issue_waiter.wait(CertificateArn=CERTIFICATE_ARN)
-
-        try: # export certificate
-          password = secrets.token_hex(16).encode()
-          response = acm_client.export_certificate(
-            CertificateArn = CERTIFICATE_ARN,
-            Passphrase = password
-          )
-
-          current_dict['CERTIFICATE_PEM'] = response["Certificate"]
-          current_dict['CERTIFICATE_CHAIN_PEM'] = response["CertificateChain"]
-          pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, response["PrivateKey"], password)
-          current_dict['PRIVATE_KEY_PEM'] = str(crypto.dump_privatekey(crypto.FILETYPE_PEM, pkey), "utf-8")
-        except WaiterError as e:
-          logger.error("CreateSecret: Unable to create secret with error: %s" % (e))
-      else:
-        key = ""
-        if 'CERTIFICATE_ARN' in current_dict: # renew certificate
-          key = crypto.load_privatekey(crypto.FILETYPE_PEM, current_dict["PRIVATE_KEY_PEM"])
-        else: # need to create new certificate
-          # keypair object
-          key = crypto.PKey()
-
-          # # generate pub/priv key, with algorithm TYPE_RSA with specified length
-          key.generate_key(getattr(globals()["crypto"], current_dict["KEY_ALGORITHM"]), int(current_dict["KEY_SIZE"]))
-        try:
-
-          # # generate (common name is required for ACM PCA) and sign CSR
-          csr = crypto.X509Req()
-          csr.set_pubkey(key)
-          csr.sign(key, current_dict['SIGNING_ALGORITHM']) # can be sha256, sha384, sha512
-          csr.get_subject().CN = current_dict['COMMON_NAME']
-
-          # # issue PCA certificate
-          response = acm_pca_client.issue_certificate(
-            CertificateAuthorityArn = current_dict['CA_ARN'],
-            Csr = crypto.dump_certificate_request(crypto.FILETYPE_PEM, csr),
-            SigningAlgorithm = ALGORITHM_CONFIG[current_dict['KEY_ALGORITHM']][current_dict['SIGNING_ALGORITHM']],
-            TemplateArn = current_dict['TEMPLATE_ARN'],
-            Validity = {
-              'Value': 365 if "VALIDITY" not in current_dict else current_dict["VALIDITY"], 'Type': 'DAYS'
-            }
-          )
-
-          current_dict['CERTIFICATE_ARN'] = response['CertificateArn']
-
-          # # wait for certificate to be issued
-          waiter = acm_pca_client.get_waiter("certificate_issued")
-          waiter.wait(
-            CertificateAuthorityArn=current_dict['CA_ARN'], 
-            CertificateArn=current_dict['CERTIFICATE_ARN'],
-            WaiterConfig={
-              'Delay': 1,
-              'MaxAttempts': 10
-            })
-
-          # # get certificate
-          response = acm_pca_client.get_certificate(
-            CertificateAuthorityArn=current_dict['CA_ARN'],
-            CertificateArn=current_dict['CERTIFICATE_ARN']
-          )
-          current_dict['CERTIFICATE_PEM'] = response['Certificate']
-          current_dict['CERTIFICATE_CHAIN_PEM'] = response['CertificateChain']
-          current_dict['PRIVATE_KEY_PEM'] = str(crypto.dump_privatekey(crypto.FILETYPE_PEM, key), "utf-8")
-        except Exception as e:
-          logger.error("CreateSecret: Unable to create secret with error: %s" % (e))
-
-      # Put the secret
-      service_client.put_secret_value(SecretId=arn, ClientRequestToken=token, SecretString=json.dumps(current_dict), VersionStages=['AWSPENDING'])
-      logger.info("createSecret: Successfully put secret for ARN %s and version %s." % (arn, token))
+        # Put the secret
+        service_client.put_secret_value(SecretId=arn, ClientRequestToken=token, SecretString=json.dumps(current_dict), VersionStages=['AWSPENDING'])
+        logger.info("createSecret: Successfully put secret for ARN %s and version %s." % (arn, token))
 
 
 def set_secret(service_client, arn, token):
@@ -410,3 +341,203 @@ def get_secret_dict(service_client, arn, stage, token=None):
 
   # Parse and return the secret JSON string
   return secret_dict
+
+
+def generate_private_key(key_type, size, curve):
+    """
+        Generates a private key using existing data for context
+
+        Supports (RSA, DSA, Ed25519, Ed448, and EllipticCurve keys)
+
+        Args: 
+            key_type: The type of key to generate
+            size: the size of key to generate
+            curve: (optional) if generating an EC key pair
+
+        Raises:
+            ValueError: if key type is not supported
+    """
+
+    if key_type == "RSA":
+        return rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=size,
+            backend=cryptography_backend
+            )
+
+    if key_type == "DSA":
+        return dsa.generate_private_key(
+            key_size=size,
+            backend=cryptography_backend
+        )
+
+    if key_type == "ED25519":
+        return ed25519.Ed25519PrivateKey.generate()
+
+    if key_type == "ED448":
+        return ed448.Ed448PrivateKey.generate()
+
+    if key_type == "EC":
+        return ec.generate_private_key(
+            curve=getattr(globals()['ec'], curve),
+            backend=cryptography_backend
+        )
+
+    raise ValueError("Unsupported key type")
+
+
+def generate_csr(current_dict, key):
+    """
+        Generates and signs a CSR for ACM PCA Certificate
+
+        Args:
+            current_dict: current secret values used to add extensions/metadata to CSR
+            key: key pair to use to sign CSR
+
+        Raises:
+    """
+    builder = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, current_dict['COMMON_NAME'])
+    ]))
+
+
+
+    hash_algorithm = None if (isinstance(key, ed25519.Ed25519PrivateKey) or
+                              isinstance(key, ed448.Ed448PrivateKey)) else getattr(globals()['hashes'], current_dict["SIGNING_ALGORITHM"].upper())()
+
+    csr = builder.sign(
+        key,
+        ec.ECDSA(hash_algorithm) if (isinstance(key, ec.EllipticCurvePrivateKey)) else hash_algorithm,
+        cryptography_backend
+    )
+
+    return csr.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def get_signature_algorithm(isEC, alg_type):
+    """
+        Returns signature algorithm for ACM PCA 
+
+        Args:
+            isEC: true if Elliptic Curve certificate
+            alg_type: Hash Algorithm from cryptography package to find
+
+        Raises:
+            ValueError: Algorithm type not supported
+    """
+
+    signing_algorithms = {
+        "TYPE_RSA": {
+            "sha256": "SHA256WITHRSA",
+            "sha384": "SHA384WITHRSA",
+            "sha512": "SHA512WITHRSA"  
+        },
+        "TYPE_ECDSA": {
+            "sha256": "SHA256WITHECDSA",
+            "sha384": "SHA384WITHECDSA",
+            "sha512": "SHA512WITHECDSA" 
+        }
+    }
+    if alg_type not in ['sha256', 'sha384', 'sha512']:
+        return ValueError('Signing Algorithm not supported')
+
+    if isEC:
+        return signing_algorithms['TYPE_ECDSA'][alg_type]
+    else:
+        return signing_algorithms['TYPE_RSA'][alg_type]
+
+
+def generate_acm_managed(current_dict, client, renew, issue):
+    """
+        Generates an Private Certificate using AWS Ceritificate Manager (ACM)
+
+        Args:
+            current_dict: current secret values used to generate certificate
+            client: boto3 client used to make requests to ACM
+            renew: boto3 waiter designed to wait for certificate renewal to complete
+            issue: boto3 waiter to wait for certificate to be issued
+
+        Raises:
+            CreateSecret error if unable to export certificate and set secret value
+    """
+    CERTIFICATE_ARN = ""
+
+    # renew certificate to test everything works
+    if 'CERTIFICATE_ARN' in current_dict and current_dict['ENVIRONMENT'] == 'TEST':
+        CERTIFICATE_ARN = current_dict['CERTIFICATE_ARN']
+        client.renew_certificate(CertificateArn=current_dict['CERTIFICATE_ARN'])
+        # wait for certificate renewal to complete
+        renew.wait(CertificateArn=CERTIFICATE_ARN)
+
+    else: # first time creating secret
+        response = client.request_certificate(
+        DomainName = current_dict['COMMON_NAME'],
+        CertificateAuthorityArn=current_dict['CA_ARN']
+        )
+        CERTIFICATE_ARN = response['CertificateArn']
+        current_dict['CERTIFICATE_ARN'] = CERTIFICATE_ARN
+        issue.wait(CertificateArn=CERTIFICATE_ARN)
+
+    try: # export certificate
+        pw = secrets.token_hex(16).encode()
+        response = client.export_certificate(
+        CertificateArn = CERTIFICATE_ARN,
+        Passphrase = pw
+        )
+
+        current_dict['CERTIFICATE_PEM'] = response["Certificate"]
+        current_dict['CERTIFICATE_CHAIN_PEM'] = response["CertificateChain"]
+        # decrypt and store private key
+        pkey = serialization.load_pem_private_key(response['PrivateKey'].encode(), password=pw, backend=cryptography_backend)
+        current_dict['PRIVATE_KEY_PEM'] = pkey.private_bytes(
+            encoding = serialization.Encoding.PEM,
+            format = serialization.PrivateFormat.PKCS8,
+            encryption_algorithm = serialization.NoEncryption()
+        ).decode()
+    except WaiterError as e:
+        logger.error("CreateSecret: Unable to create secret with error: %s" % (e))
+    
+    return current_dict
+
+
+def generate_customer_managed(current_dict, client, key):
+    # # issue PCA certificate
+    response = client.issue_certificate(
+        CertificateAuthorityArn = current_dict['CA_ARN'],
+        Csr = generate_csr(current_dict, key).encode(),
+        SigningAlgorithm = get_signature_algorithm(
+                        True if (isinstance(key, ec.EllipticCurvePrivateKey)) else False, 
+                        current_dict['SIGNING_ALGORITHM']),
+        TemplateArn = current_dict['TEMPLATE_ARN'],
+        Validity = {
+            'Value': 365 if "VALIDITY" not in current_dict else current_dict["VALIDITY"], 'Type': 'DAYS'
+        }
+    )
+
+    current_dict['CERTIFICATE_ARN'] = response['CertificateArn']
+
+    # # wait for certificate to be issued
+    waiter = client.get_waiter("certificate_issued")
+    waiter.wait(
+    CertificateAuthorityArn=current_dict['CA_ARN'], 
+    CertificateArn=current_dict['CERTIFICATE_ARN'],
+    WaiterConfig={
+        'Delay': 1,
+        'MaxAttempts': 10
+    })
+
+    # # get certificate
+    response = client.get_certificate(
+        CertificateAuthorityArn=current_dict['CA_ARN'],
+        CertificateArn=current_dict['CERTIFICATE_ARN']
+    )
+
+    current_dict['CERTIFICATE_PEM'] = response['Certificate']
+    current_dict['CERTIFICATE_CHAIN_PEM'] = response['CertificateChain']
+    current_dict['PRIVATE_KEY_PEM'] = key.private_bytes(
+        encoding = serialization.Encoding.PEM,
+        format = serialization.PrivateFormat.PKCS8,
+        encryption_algorithm = serialization.NoEncryption()
+    ).decode()
+
+    return current_dict
