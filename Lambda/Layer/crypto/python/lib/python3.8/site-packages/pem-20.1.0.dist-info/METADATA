@@ -1,0 +1,155 @@
+Metadata-Version: 2.1
+Name: pem
+Version: 20.1.0
+Summary: Easy PEM file parsing in Python.
+Home-page: https://pem.readthedocs.io/
+Author: Hynek Schlawack
+Author-email: hs@ox.cx
+Maintainer: Hynek Schlawack
+Maintainer-email: hs@ox.cx
+License: MIT
+Project-URL: Documentation, https://pem.readthedocs.io/
+Project-URL: Bug Tracker, https://github.com/hynek/pem/issues
+Project-URL: Source Code, https://github.com/hynek/pem
+Keywords: pyopenssl,ssl,tls,pem,cryptography,twisted
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Description-Content-Type: text/x-rst
+Provides-Extra: azure-pipelines
+Requires-Dist: coverage[toml] ; extra == 'azure-pipelines'
+Requires-Dist: pytest ; extra == 'azure-pipelines'
+Requires-Dist: certifi ; extra == 'azure-pipelines'
+Requires-Dist: pretend ; extra == 'azure-pipelines'
+Requires-Dist: pyopenssl ; extra == 'azure-pipelines'
+Requires-Dist: pytest-azurepipelines ; extra == 'azure-pipelines'
+Provides-Extra: dev
+Requires-Dist: coverage[toml] ; extra == 'dev'
+Requires-Dist: pytest ; extra == 'dev'
+Requires-Dist: certifi ; extra == 'dev'
+Requires-Dist: pretend ; extra == 'dev'
+Requires-Dist: pyopenssl ; extra == 'dev'
+Requires-Dist: sphinx ; extra == 'dev'
+Requires-Dist: twisted[tls] ; extra == 'dev'
+Requires-Dist: pre-commit ; extra == 'dev'
+Provides-Extra: docs
+Requires-Dist: sphinx ; extra == 'docs'
+Provides-Extra: tests
+Requires-Dist: coverage[toml] ; extra == 'tests'
+Requires-Dist: pytest ; extra == 'tests'
+Requires-Dist: certifi ; extra == 'tests'
+Requires-Dist: pretend ; extra == 'tests'
+Requires-Dist: pyopenssl ; extra == 'tests'
+
+pem: Easy PEM file parsing
+==========================
+
+.. image:: https://img.shields.io/pypi/v/pem.svg
+   :target: https://pypi.org/project/pem/
+   :alt: PyPI
+
+.. image:: https://readthedocs.org/projects/pem/badge/?version=stable
+   :target: https://pem.readthedocs.io/en/stable/?badge=stable
+   :alt: Documentation Status
+
+.. image:: https://dev.azure.com/the-hynek/pem/_apis/build/status/hynek.pem?branchName=master
+   :target: https://dev.azure.com/the-hynek/pem/_build?definitionId=1
+   :alt: CI Status
+
+.. image:: https://codecov.io/gh/hynek/pem/branch/master/graph/badge.svg
+   :target: https://codecov.io/github/hynek/pem
+   :alt: Coverage
+
+.. image:: https://www.irccloud.com/invite-svg?channel=%23cryptography-dev&amp;hostname=irc.freenode.net&amp;port=6697&amp;ssl=1
+   :target: https://www.irccloud.com/invite?channel=%23cryptography-dev&amp;hostname=irc.freenode.net&amp;port=6697&amp;ssl=1
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+   :target: https://github.com/psf/black
+   :alt: Code style: black
+
+.. image:: http://www.mypy-lang.org/static/mypy_badge.svg
+   :target: http://mypy-lang.org
+   :alt: Checked with mypy
+
+.. teaser-begin
+
+``pem`` is an MIT_-licensed Python module for parsing and splitting of `PEM files`_, i.e. Base64 encoded DER keys and certificates.
+
+It runs on Python 2.7, 3.5+, and PyPy, has no dependencies, and does not attempt to interpret the certificate data in any way.
+
+It’s born from the need to load keys, certificates, trust chains, and DH parameters from various certificate deployments: some servers (like Apache_) expect them to be a separate file, others (like nginx_) expect them concatenated to the server certificate and finally some (like HAProxy_) expect key, certificate, and chain to be in one file.
+With ``pem``, your Python application can cope with all of those scenarios:
+
+.. code-block:: pycon
+
+   >>> import pem
+   >>> certs = pem.parse_file("chain.pem")
+   >>> certs
+   [<Certificate(PEM string with SHA-1 digest '...')>, <Certificate(PEM string with SHA-1 digest '...')>]
+   >>> str(certs[0])
+   '-----BEGIN CERTIFICATE-----\n...'
+
+Additionally to the vanilla parsing code, ``pem`` also contains helpers for Twisted_ that save a lot of boilerplate code.
+
+``pem``\ ’s documentation lives at `Read the Docs <https://pem.readthedocs.io/>`_, the code on `GitHub <https://github.com/hynek/pem>`_.
+
+
+.. _MIT: https://choosealicense.com/licenses/mit/
+.. _`PEM files`: https://en.wikipedia.org/wiki/X.509#Certificate_filename_extensions
+.. _Apache: https://httpd.apache.org/
+.. _nginx: https://nginx.org/
+.. _HAProxy: https://www.haproxy.org/
+.. _Twisted: https://twistedmatrix.com/documents/current/api/twisted.internet.ssl.Certificate.html#loadPEM
+
+
+Release Information
+===================
+
+20.1.0 (2020-01-06)
+-------------------
+
+
+Backward-incompatible changes:
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*none*
+
+
+Deprecations:
+^^^^^^^^^^^^^
+
+*none*
+
+
+Changes:
+^^^^^^^^
+
+- Carriage returns (``\r``) are now stripped before hashing ``pem`` objects to provide consistent hashes across platforms.
+  `#40 <https://github.com/hynek/pem/issues/40>`_
+
+`Full changelog <https://pem.readthedocs.io/en/stable/changelog.html>`_.
+
+Credits
+=======
+
+``pem`` is written and maintained by Hynek Schlawack.
+
+The development is kindly supported by `Variomedia AG <https://www.variomedia.de/>`_.
+
+A full list of contributors can be found on GitHub’s `overview <https://github.com/hynek/pem/graphs/contributors>`_.
+
+
