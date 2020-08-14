@@ -390,8 +390,9 @@ Resources:
       Content:
         S3Bucket: 
           Ref: S3Bucket
-        S3Key: acm-blog/openssl_layer.zip
-      LayerName: PyOpenSSL
+        S3Key: 
+          Ref: LambdaLayerLocation
+      LayerName: Crypto
     Metadata:
       aws:cdk:path: ACM-Blog/RotateLambdaLayer/Resource
   SecretsRotateFunctionServiceRole331CDE54:
@@ -459,7 +460,8 @@ Resources:
       Code:
         S3Bucket: 
           Ref: S3Bucket
-        S3Key: acm-blog/rotate_function.zip
+        S3Key: 
+          Ref: LambdaFunctionLocation
       Handler: sm_rotate_secrets.lambda_handler
       Role:
         Fn::GetAtt:
@@ -599,9 +601,19 @@ Parameters:
   SsmParameterValueawsserviceamiamazonlinuxlatestamzn2amihvmx8664gp2C96584B6F00A464EAD1953AFF4B05118Parameter:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  LambdaLayerLocation:
+    Type: String
+    ConstraintDescription: Malformed S3 Location. Can include numbers, lowercase or uppercase letters, hyphons and /. Example ("folder1/folder2/lambda_layer.zip")
+    Description: S3 Key for Lambda Layer ZIP file in the S3 Bucket referenced above. e.g. "folder1/layer.zip"
+  LambdaFunctionLocation:
+    Type: String
+    ConstraintDescription: Malformed S3 Location. Can include numbers, lowercase or uppercase letters, hyphons and /. Example ("folder1/folder2/function.zip")
+    Description: S3 Key for Lambda Function ZIP file in the S3 Bucket referenced above. e.g. "folder1/function.zip"
   S3Bucket:
     Type: String
-    Description: Bucket where Lambda code and Layer lives
+    ConstraintDescription: Malformed S3 Bucket Name. Can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-).
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+    Description: Name of bucket where Lambda code and Layer lives (example "s3-bucket-name")
 Conditions:
   CDKMetadataAvailable:
     Fn::Or:
