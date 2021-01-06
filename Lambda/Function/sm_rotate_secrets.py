@@ -358,6 +358,8 @@ def generate_private_key(key_type, size, curve):
             ValueError: if key type is not supported
     """
 
+    # See https://docs.aws.amazon.com/acm/latest/userguide/acm-certificate.html 
+    # To confirm that the algorithm is supported before creating
     if key_type == "TYPE_RSA":
         return rsa.generate_private_key(
             public_exponent=65537,
