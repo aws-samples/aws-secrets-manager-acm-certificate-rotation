@@ -333,7 +333,7 @@ def get_secret_dict(service_client, arn, stage, token=None):
   if secret_dict['CERTIFICATE_TYPE'] == 'ACM_ISSUED':
     required_fields = ["CA_ARN", "COMMON_NAME", "ENVIRONMENT"]
   else:
-    required_fields = ["CA_ARN", "COMMON_NAME", "TEMPLATE_ARN", "KEY_ALGORITHM", "KEY_SIZE", "SIGNING_ALGORITHM"] # add key size, singing algo, validity???
+    required_fields = ["CA_ARN", "COMMON_NAME", "TEMPLATE_ARN", "KEY_ALGORITHM", "KEY_SIZE", "SIGNING_ALGORITHM", "SIGNING_HASH"]
 
   for field in required_fields:
       if field not in secret_dict:
@@ -358,26 +358,26 @@ def generate_private_key(key_type, size, curve):
             ValueError: if key type is not supported
     """
 
-    if key_type == "RSA":
+    if key_type == "TYPE_RSA":
         return rsa.generate_private_key(
             public_exponent=65537,
-            key_size=size,
+            key_size=int(size),
             backend=cryptography_backend
             )
 
-    if key_type == "DSA":
+    if key_type == "TYPE_DSA":
         return dsa.generate_private_key(
-            key_size=size,
+            key_size=int(size),
             backend=cryptography_backend
         )
 
-    if key_type == "ED25519":
+    if key_type == "TYPE_ED25519":
         return ed25519.Ed25519PrivateKey.generate()
 
-    if key_type == "ED448":
+    if key_type == "TYPE_ED448":
         return ed448.Ed448PrivateKey.generate()
 
-    if key_type == "EC":
+    if key_type == "TYPE_EC":
         return ec.generate_private_key(
             curve=getattr(globals()['ec'], curve),
             backend=cryptography_backend
@@ -403,7 +403,7 @@ def generate_csr(current_dict, key):
 
 
     hash_algorithm = None if (isinstance(key, ed25519.Ed25519PrivateKey) or
-                              isinstance(key, ed448.Ed448PrivateKey)) else getattr(globals()['hashes'], current_dict["SIGNING_ALGORITHM"].upper())()
+                              isinstance(key, ed448.Ed448PrivateKey)) else getattr(globals()['hashes'], current_dict["SIGNING_HASH"].upper())()
 
     csr = builder.sign(
         key,
@@ -414,7 +414,7 @@ def generate_csr(current_dict, key):
     return csr.public_bytes(serialization.Encoding.PEM).decode()
 
 
-def get_signature_algorithm(isEC, alg_type):
+def get_signature_algorithm(alg_type, alg_hash):
     """
         Returns signature algorithm for ACM PCA 
 
@@ -427,24 +427,21 @@ def get_signature_algorithm(isEC, alg_type):
     """
 
     signing_algorithms = {
-        "TYPE_RSA": {
+        "RSA": {
             "sha256": "SHA256WITHRSA",
             "sha384": "SHA384WITHRSA",
             "sha512": "SHA512WITHRSA"  
         },
-        "TYPE_ECDSA": {
+        "ECDSA": {
             "sha256": "SHA256WITHECDSA",
             "sha384": "SHA384WITHECDSA",
             "sha512": "SHA512WITHECDSA" 
         }
     }
-    if alg_type not in ['sha256', 'sha384', 'sha512']:
+    if alg_hash not in ['sha256', 'sha384', 'sha512']:
         return ValueError('Signing Algorithm not supported')
 
-    if isEC:
-        return signing_algorithms['TYPE_ECDSA'][alg_type]
-    else:
-        return signing_algorithms['TYPE_RSA'][alg_type]
+    return signing_algorithms[alg_type][alg_hash]
 
 
 def generate_acm_managed(current_dict, client, renew, issue):
@@ -501,13 +498,13 @@ def generate_acm_managed(current_dict, client, renew, issue):
 
 
 def generate_customer_managed(current_dict, client, key):
-    # # issue PCA certificate
+    # issue PCA certificate
     response = client.issue_certificate(
         CertificateAuthorityArn = current_dict['CA_ARN'],
         Csr = generate_csr(current_dict, key).encode(),
         SigningAlgorithm = get_signature_algorithm(
-                        True if (isinstance(key, ec.EllipticCurvePrivateKey)) else False, 
-                        current_dict['SIGNING_ALGORITHM']),
+                        current_dict['SIGNING_ALGORITHM'], 
+                        current_dict['SIGNING_HASH']),
         TemplateArn = current_dict['TEMPLATE_ARN'],
         Validity = {
             'Value': 365 if "VALIDITY" not in current_dict else current_dict["VALIDITY"], 'Type': 'DAYS'
@@ -516,7 +513,7 @@ def generate_customer_managed(current_dict, client, key):
 
     current_dict['CERTIFICATE_ARN'] = response['CertificateArn']
 
-    # # wait for certificate to be issued
+    # wait for certificate to be issued
     waiter = client.get_waiter("certificate_issued")
     waiter.wait(
     CertificateAuthorityArn=current_dict['CA_ARN'], 
@@ -526,7 +523,7 @@ def generate_customer_managed(current_dict, client, key):
         'MaxAttempts': 10
     })
 
-    # # get certificate
+    # get certificate
     response = client.get_certificate(
         CertificateAuthorityArn=current_dict['CA_ARN'],
         CertificateArn=current_dict['CERTIFICATE_ARN']

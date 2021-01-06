@@ -399,9 +399,6 @@ Parameters:
   KMSKeyARN:
     Type: String
     Description: KMS Key ARN used to encrypt Secrets in Secrets Manager
-  LambdaFnARN:
-    Type: String
-    Description: Lambda Function ARN in CA Account used for Secret rotation
 Conditions:
   CDKMetadataAvailable:
     Fn::Or:
