@@ -9,10 +9,6 @@ To set up the resources in this repository, complete the following:
 1. Upload the crypto_layer.zip and rotate_function.zip to an S3 Bucket
 2. Follow the directions outlined in the Blog above and reference the uploaded files when launching the src_account.yaml CloudFormation Template
 
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
-
 ## License Summary
 
 This sample code is made available under a modified MIT license. See the LICENSE file.
