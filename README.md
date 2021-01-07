@@ -2,7 +2,7 @@
 
 This repository contains a Lambda function used to maintain the lifecylce of AWS Certificate Manager private certificates using AWS Secrets Manager. It also includes CloudFormation templates that launch a sample environment used to test this lifecycle management. 
 
-Please see a walk-through of using this function in [Storing and Renewing Private Certificates using Secrets Manager]().
+Please see a walk-through of using this function in [Storing and Renewing Private Certificates using Secrets Manager](https://aws.amazon.com/blogs/security/use-aws-secrets-manager-to-simplify-the-management-of-private-certificates/).
 
 ## Setup
 To set up the resources in this repository, complete the following:
